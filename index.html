@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        #month-header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        #month-text {
+            margin: 0 20px;
+        }
+        button.nav {
+            padding: 5px 10px;
+            font-size: 16px;
+        }
+        #calendar {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+        .day {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: center;
+            min-height: 80px;
+        }
+        .day-header {
+            font-weight: bold;
+        }
+        .day-number {
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        .status {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 5px;
+        }
+        button {
+            padding: 2px 5px;
+            cursor: pointer;
+        }
+        .wasted {
+            background-color: #ffcccc;
+        }
+        .success {
+            background-color: #ccffcc;
+        }
+        #chart-container {
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Daily Tracker</h1>
+    <button id="reset-btn" style="position: absolute; top: 20px; right: 20px;">Reset Data</button>
+    <div id="month-header"></div>
+    <div id="calendar"></div>
+    <div id="chart-container">
+        <div style="display: inline-block; width: 45%; margin-right: 5%;">
+            <h3>Overall</h3>
+            <canvas id="overallChart"></canvas>
+        </div>
+        <div style="display: inline-block; width: 45%;">
+            <h3>Current Month</h3>
+            <canvas id="monthlyChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const calendarEl = document.getElementById('calendar');
+        const overallCtx = document.getElementById('overallChart').getContext('2d');
+        const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+        let overallChart, monthlyChart;
+
+        // Load data from localStorage
+        let data = JSON.parse(localStorage.getItem('dailyTracker')) || {};
+
+        // Get current date
+        const today = new Date();
+        let currentMonth = today.getMonth();
+        let currentYear = today.getFullYear();
+        const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+        // Days of week
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        // Month names
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+        // Generate calendar
+        function generateCalendar() {
+            // Set month header
+            const headerEl = document.getElementById('month-header');
+            headerEl.innerHTML = '';
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'nav';
+            prevBtn.textContent = '<';
+            prevBtn.onclick = () => changeMonth(-1);
+            headerEl.appendChild(prevBtn);
+
+            const monthText = document.createElement('span');
+            monthText.id = 'month-text';
+            monthText.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+            headerEl.appendChild(monthText);
+
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'nav';
+            nextBtn.textContent = '>';
+            nextBtn.onclick = () => changeMonth(1);
+            headerEl.appendChild(nextBtn);
+
+            calendarEl.innerHTML = '';
+
+            // Add day headers
+            daysOfWeek.forEach(day => {
+                const header = document.createElement('div');
+                header.className = 'day day-header';
+                header.textContent = day;
+                calendarEl.appendChild(header);
+            });
+
+            // Get first day of month
+            const firstDay = new Date(currentYear, currentMonth, 1);
+            const lastDay = new Date(currentYear, currentMonth + 1, 0);
+            const startDate = new Date(firstDay);
+            startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+            // Generate days
+            for (let i = 0; i < 42; i++) {  // 6 weeks * 7 days
+                const dayEl = document.createElement('div');
+                dayEl.className = 'day';
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + i);
+                const dayNumber = date.getDate();
+                const month = date.getMonth();
+                const year = date.getFullYear();
+
+                const dayNumEl = document.createElement('div');
+                dayNumEl.className = 'day-number';
+                dayNumEl.textContent = month === currentMonth ? dayNumber : '';
+                dayEl.appendChild(dayNumEl);
+
+                if (month === currentMonth) {
+                    const dateKey = `${year}-${month + 1}-${dayNumber}`;
+
+                    // Apply existing status
+                    if (data[dateKey]) {
+                        dayEl.classList.add(data[dateKey]);
+                    }
+
+                    if (date <= todayDate) {
+                        const statusEl = document.createElement('div');
+                        statusEl.className = 'status';
+
+                        const wastedBtn = document.createElement('button');
+                        wastedBtn.textContent = 'Wasted';
+                        wastedBtn.onclick = () => markDay(dateKey, 'wasted');
+
+                        const successBtn = document.createElement('button');
+                        successBtn.textContent = 'Success';
+                        successBtn.onclick = () => markDay(dateKey, 'success');
+
+                        statusEl.appendChild(wastedBtn);
+                        statusEl.appendChild(successBtn);
+                        dayEl.appendChild(statusEl);
+                    }
+                }
+
+                calendarEl.appendChild(dayEl);
+            }
+        }
+
+        // Mark a day
+        function markDay(dateKey, status) {
+            data[dateKey] = status;
+            localStorage.setItem('dailyTracker', JSON.stringify(data));
+            generateCalendar();  // Refresh calendar
+            updateChart();
+        }
+
+        // Change month
+        function changeMonth(delta) {
+            currentMonth += delta;
+            if (currentMonth < 0) {
+                currentMonth = 11;
+                currentYear--;
+            } else if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
+            generateCalendar();
+            updateChart();
+        }
+
+        // Update pie charts
+        function updateChart() {
+            // Overall
+            const overallWasted = Object.values(data).filter(s => s === 'wasted').length;
+            const overallSuccess = Object.values(data).filter(s => s === 'success').length;
+
+            if (overallChart) {
+                overallChart.destroy();
+            }
+
+            overallChart = new Chart(overallCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Wasted', 'Success'],
+                    datasets: [{
+                        data: [overallWasted, overallSuccess],
+                        backgroundColor: ['#ffcccc', '#ccffcc']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+
+            // Monthly
+            const monthlyData = Object.keys(data).filter(key => {
+                const [year, month] = key.split('-').map(Number);
+                return year === currentYear && month - 1 === currentMonth;
+            }).map(key => data[key]);
+
+            const monthlyWasted = monthlyData.filter(s => s === 'wasted').length;
+            const monthlySuccess = monthlyData.filter(s => s === 'success').length;
+
+            if (monthlyChart) {
+                monthlyChart.destroy();
+            }
+
+            monthlyChart = new Chart(monthlyCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Wasted', 'Success'],
+                    datasets: [{
+                        data: [monthlyWasted, monthlySuccess],
+                        backgroundColor: ['#ffcccc', '#ccffcc']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize
+        generateCalendar();
+        updateChart();
+
+        // Reset data
+        document.getElementById('reset-btn').onclick = () => {
+            data = {};
+            localStorage.removeItem('dailyTracker');
+            generateCalendar();
+            updateChart();
+        };
+    </script>
+</body>
+</html>
